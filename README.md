@@ -4,7 +4,7 @@ A tiny, **dependency-free** Rust CLI that reports a server's CPU, memory,
 storage, RAID and network information.
 
 ```
-$ server-info
+$ server-info --no-shell
 
 Server Information
 
@@ -69,6 +69,10 @@ Server Information
 - **Network** — interfaces with IPv4/IPv6 addresses, prefix length and scope
   (public / private / link-local / loopback), MAC address, default gateway and
   DNS servers.
+- **Shell hand-off** — after printing the report it replaces itself with
+  `/bin/sh`, so the session continues on the same host. This happens by default
+  when stdin and stdout are terminals; use `--no-shell` to skip it or
+  `--shell <program>` to pick a different shell.
 - **JSON output** for scripts and dashboards.
 - **No external crates** — only the Rust standard library. The Linux binary is
   a single static executable.
@@ -98,6 +102,9 @@ Usage: server-info [OPTIONS]
 Options:
   -j, --json               Print machine-readable JSON instead of a report
       --cpu-sample-ms <MS> Sampling window used to measure CPU usage [default: 300]
+      --shell [PROGRAM]    Start an interactive shell after the report
+                           (default: /bin/sh)
+      --no-shell           Do not start a shell after the report
       --color              Force colored output
       --no-color           Disable colored output (also honors NO_COLOR)
   -h, --help               Print help
@@ -107,10 +114,17 @@ Options:
 Examples:
 
 ```sh
-server-info                    # human-readable report
-server-info --json | jq .      # JSON for automation
-watch -n 2 server-info         # live view
+server-info                      # report, then open /bin/sh
+server-info --shell bash         # report, then open bash
+server-info --no-shell           # report only
+server-info --json > info.json   # JSON for automation (no shell when piped)
+watch -n 2 server-info --no-shell
 ```
+
+The default shell hand-off is skipped automatically when stdin or stdout is not
+a terminal, so pipes, scripts and CI jobs are unaffected. Pass `--shell`
+explicitly to force a shell even in non-interactive sessions (for example
+`echo 'uptime' | server-info --shell`).
 
 ### JSON output
 
