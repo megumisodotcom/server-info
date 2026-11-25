@@ -1,192 +1,82 @@
-# server-info
+# podman-check
 
-A tiny, **dependency-free** Rust CLI that reports a server's CPU, memory,
-storage, RAID and network information.
+A small, **dependency-free** Python CLI that installs [Podman](https://podman.io/)
+on the current machine and proves that containers can actually run.
 
 ```
-$ server-info --no-shell
+$ ./podman_check.py
 
-Server Information
+Podman container check
 
  SYSTEM
-  Hostname   web-01
-  OS         Debian GNU/Linux 12 (bookworm)
-  Kernel     6.1.0-18-amd64
-  Arch       x86_64
-  Uptime     12d 7h 42m
-  Load avg   0.31  0.24  0.19
+  OS      Linux-6.8.0-45-generic-x86_64-with-glibc2.39
+  Arch    x86_64
+  Python  3.12.3
 
- CPU
-  Model      Intel(R) Xeon(R) E-2288G CPU @ 3.70GHz
-  Cores      16 logical / 8 physical
-  Max freq   4.90 GHz
-  Usage       23.4%  ████░░░░░░░░░░░░░░░░
-  Per-core   cpu0    31.2%   cpu1    18.7%   cpu2    22.9%   cpu3    19.1%
-             cpu4    27.4%   cpu5    21.3%   cpu6    25.8%   cpu7    14.6%
+ STEPS
+  [ ok ] platform         Linux-6.8.0-45-generic-x86_64-with-glibc2.39 (x86_64)
+  [ ok ] podman installed podman version 5.2.3
+  [ ok ] podman info      5.2.3, rootless=true
+  [ ok ] container run   quay.io/podman/hello:latest: !... Hello Podman World ...!
 
- MEMORY
-  RAM        62.7 GiB total
-  Used       18.3 GiB / 62.7 GiB (29.2%)  █████░░░░░░░░░░░░░░░░
-  Available  43.9 GiB
-  Free       1.2 GiB  (buffers 310.4 MiB / cache 41.5 GiB)
-  Swap       0 B / 8.0 GiB (0.0%)
-
- STORAGE
-  Filesystem                 Size      Used     Avail Use%  Mounted on
-  /dev/mapper/vg0-root    100.0 GiB  21.4 GiB  73.9 GiB  22%  /
-  /dev/nvme1n1p1          931.5 GiB 412.7 GiB 471.2 GiB  47%  /data
-  /dev/md0                465.6 GiB 101.3 GiB 340.4 GiB  23%  /srv
-
- RAID
-  md0    raid1   active  [2/2] [UU] 465.6 GiB
-        members sda1[0] sdb1[1]
-  md1    raid5   active  [4/3] [UUU_] 3.6 TiB  DEGRADED
-        members sdc1[0] sdd1[1] sde1[2] sdf1[3]
-        progress recovery 43.7%
-
- NETWORK
-  eno1       up  a4:bf:01:23:45:67
-      192.168.10.20/24                            [private]
-      2001:db8:10::20/64                          [public]
-  lo         loopback
-      127.0.0.1/8                                 [loopback]
-      ::1/128                                     [loopback]
-  Gateway    192.168.10.1
-  DNS        1.1.1.1  8.8.8.8
+ Result  PASS
 ```
 
-## Features
+## What it does
 
-- **CPU** — model, logical/physical core count, max frequency, live usage
-  (overall and per core) sampled from `/proc/stat`.
-- **Memory** — total, used, available, free/buffers/cache and swap from
-  `/proc/meminfo`.
-- **Storage** — per-filesystem size, used, available and usage percentage from
-  `df`, with pseudo filesystems (`proc`, `sysfs`, `tmpfs`, …) filtered out.
-- **RAID** — Linux `md` arrays from `/proc/mdstat` (level, state, members,
-  size, degraded flag, rebuild progress), plus RAID controllers found via
-  `lspci`. Falls back to `/sys/block/md*` when `/proc/mdstat` is missing.
-- **Network** — interfaces with IPv4/IPv6 addresses, prefix length and scope
-  (public / private / link-local / loopback), MAC address, default gateway and
-  DNS servers.
-- **Shell hand-off** — after printing the report it replaces itself with
-  `/bin/sh`, so the session continues on the same host. This happens by default
-  when stdin and stdout are terminals; use `--no-shell` to skip it or
-  `--shell <program>` to pick a different shell.
-- **JSON output** for scripts and dashboards.
-- **No external crates** — only the Rust standard library. The Linux binary is
-  a single static executable.
+1. Detects the platform (Linux or macOS).
+2. Checks whether `podman` is installed.
+3. If it is missing, installs it with the native package manager
+   (`apt-get`, `dnf`, `yum`, `zypper`, `pacman`, `apk`, or Homebrew).
+   On macOS the Podman VM (`podman machine`) is initialized and started.
+4. Verifies the daemon/VM with `podman info`.
+5. Runs a real container (`quay.io/podman/hello` by default) and reports the
+   result.
 
-## Install
-
-```sh
-git clone https://github.com/megumisodotcom/server-info.git
-cd server-info
-cargo build --release
-sudo install -m 0755 target/release/server-info /usr/local/bin/
-```
-
-For a statically linked musl binary (handy for old servers):
-
-```sh
-docker run --rm -v "$PWD":/app -w /app rust:alpine \
-  sh -c 'cargo build --release --target x86_64-unknown-linux-musl'
-# target/x86_64-unknown-linux-musl/release/server-info
-```
+The exit status is `0` only when the container test succeeds, so it can be
+used directly in CI or provisioning scripts.
 
 ## Usage
 
 ```
-Usage: server-info [OPTIONS]
+Usage: podman-check [OPTIONS]
 
 Options:
-  -j, --json               Print machine-readable JSON instead of a report
-      --cpu-sample-ms <MS> Sampling window used to measure CPU usage [default: 300]
-      --shell [PROGRAM]    Start an interactive shell after the report
-                           (default: /bin/sh)
-      --no-shell           Do not start a shell after the report
-      --color              Force colored output
-      --no-color           Disable colored output (also honors NO_COLOR)
-  -h, --help               Print help
-  -V, --version            Print version
+  -j, --json            Print a JSON report
+  --no-install          Do not install Podman if it is missing
+  --dry-run             Show the install/test commands without running them
+  --image IMAGE         Image used for the test run [default: quay.io/podman/hello:latest]
+  --timeout SECONDS     Timeout for install/test commands [default: 300]
+  --no-sudo             Never use sudo for installation
+  --color               Force colored output
+  --no-color            Disable colored output (also honors NO_COLOR)
+  -h, --help            Print help
+  -V, --version         Print version
 ```
 
 Examples:
 
 ```sh
-server-info                      # report, then open /bin/sh
-server-info --shell bash         # report, then open bash
-server-info --no-shell           # report only
-server-info --json > info.json   # JSON for automation (no shell when piped)
-watch -n 2 server-info --no-shell
+./podman_check.py                  # install if needed, then run a test container
+./podman_check.py --no-install     # test an existing installation
+./podman_check.py --dry-run        # only print what would happen
+./podman_check.py --json | jq .    # machine-readable report
+./podman_check.py --image docker.io/library/alpine:latest
 ```
 
-The default shell hand-off is skipped automatically when stdin or stdout is not
-a terminal, so pipes, scripts and CI jobs are unaffected. Pass `--shell`
-explicitly to force a shell even in non-interactive sessions (for example
-`echo 'uptime' | server-info --shell`).
+## Requirements
 
-### JSON output
-
-```json
-{
-  "system": {
-    "hostname": "web-01",
-    "os": "Debian GNU/Linux 12 (bookworm)",
-    "kernel": "6.1.0-18-amd64",
-    "arch": "x86_64",
-    "uptime_seconds": 1053720,
-    "load_average": [0.31, 0.24, 0.19]
-  },
-  "cpu": {
-    "model": "Intel(R) Xeon(R) E-2288G CPU @ 3.70GHz",
-    "logical_cores": 16,
-    "physical_cores": 8,
-    "max_mhz": 4900.0,
-    "usage_percent": 23.4,
-    "per_core_percent": [31.2, 18.7, 22.9]
-  }
-}
-```
-
-(`storage`, `raid` and `network` follow the same shape; run
-`server-info --json` to see the full document.)
-
-## Platform support
-
-| Feature   | Linux | macOS |
-| --------- | ----- | ----- |
-| System    | ✅    | ✅    |
-| CPU info  | ✅    | ✅ (model/cores; live usage requires `/proc`) |
-| Memory    | ✅    | ✅ (via `sysctl` / `vm_stat`) |
-| Storage   | ✅    | ✅    |
-| RAID (md) | ✅    | —     |
-| Network   | ✅    | ✅    |
-
-The primary target is Linux servers. On non-Linux systems the tool still runs
-and reports whatever the platform exposes; unavailable sections say so instead
-of failing.
-
-## How it works
-
-`server-info` reads kernel interfaces directly instead of shelling out where
-possible:
-
-- `/proc/stat`, `/proc/cpuinfo`, `/proc/meminfo`, `/proc/mdstat`,
-  `/proc/net/route`, `/proc/mounts` and `/proc/sys/kernel/*`
-- `/sys/class/net/*/address`, `/sys/block/md*/md/*`
-- `getifaddrs(3)` + `inet_ntop(3)` (via small FFI declarations) for interface
-  addresses, so no `ip`/`ifconfig` binary is required
-
-A few helpers (`df`, `lscpu`, `lspci`, `route`, `vm_stat`) are used when the
-information is not available through `/proc`/`/sys`.
+- Python 3.9+ (standard library only)
+- Root or `sudo` for installing packages on Linux
+- Homebrew on macOS
 
 ## Development
 
 ```sh
-cargo test
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+python3 podman_check.py --help
+python3 podman_check.py --dry-run
+python3 -m py_compile podman_check.py
+python3 -m unittest discover -s tests
 ```
 
 ## License
